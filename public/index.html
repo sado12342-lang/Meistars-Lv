@@ -15,7 +15,33 @@ function show(id){document.querySelectorAll('.page').forEach(x=>x.classList.remo
 function api(path,opt={}){opt.headers={...(opt.headers||{}),Authorization:'Bearer '+token,'Content-Type':'application/json'};return fetch(path,opt).then(async r=>{let x=await r.json();if(!r.ok)throw Error(x.error||'Kļūda');return x})}
 function mode(m){document.getElementById('authForm').innerHTML=m==='login'?`<label>E-pasts</label><input id="email" type="email"><label>Parole</label><input id="password" type="password"><button class="btn red full" onclick="login()">Ieiet</button>`:`<label>Vārds</label><input id="name"><label>E-pasts</label><input id="email" type="email"><label>Tālrunis</label><input id="phone"><label>Parole</label><input id="password" type="password"><label>Loma</label><select id="role"><option value="client">Klients</option><option value="worker">Meistars</option></select><button class="btn red full" onclick="register()">Izveidot kontu</button>`}
 async function login(){try{let x=await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:email.value,password:password.value})}).then(r=>r.json());if(!x.token)throw Error(x.error);token=x.token;me=x.user;localStorage.setItem('ml_token',token);localStorage.setItem('ml_me',JSON.stringify(me));boot()}catch(e){alert(e.message)}}
-async function register(){try{let x=await api('/api/register',{method:'POST',body:JSON.stringify({name:document.getElementById('rName').value,email:document.getElementById('rEmail').value,phone:document.getElementById('rPhone').value,password:document.getElementById('rPassword').value,role:document.getElementById('rRole').value})});if(x.token){localStorage.setItem('ml_token',x.token);token=x.token;alert('Konts izveidots!');boot()}else alert(x.error||x.message||'Reģistrācija neizdevās')}catch(e){alert('Kļūda: '+e.message)}}
+async function register(){
+  try{
+    let x=await api('/api/register',{
+      method:'POST',
+      body:JSON.stringify({
+        name:document.getElementById('name').value,
+        email:document.getElementById('email').value,
+        phone:document.getElementById('phone').value,
+        password:document.getElementById('password').value,
+        role:document.getElementById('role').value
+      })
+    });
+
+    if(x.token){
+      token=x.token;
+      me=x.user;
+      localStorage.setItem('ml_token',token);
+      localStorage.setItem('ml_me',JSON.stringify(me));
+      alert('Konts izveidots!');
+      boot();
+    }else{
+      alert(x.error||x.message||'Reģistrācija neizdevās');
+    }
+  }catch(e){
+    alert('Kļūda: '+e.message);
+  }
+}
 function boot(){document.getElementById('nav').classList.remove('hide');if(me.role==='admin')document.getElementById('adminBtn').classList.remove('hide');show('home');loadOrders();document.getElementById('me').textContent=me.name;document.getElementById('role').textContent=me.role}
 async function loadOrders(){try{let a=await api('/api/orders');document.getElementById('orders').innerHTML=a.map(o=>`<div class="card"><b>${o.category}</b><p>${o.description||''}</p><span>${o.place}</span> · <b>${o.offer_count} piedāv.</b></div>`).join('')||'<p class="muted">Nav pasūtījumu.</p>'}catch(e){}}
 function newOrder(c=''){document.getElementById('cat').value=c;show('new')}
