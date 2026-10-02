@@ -17,7 +17,7 @@ function mode(m){document.getElementById('authForm').innerHTML=m==='login'?`<lab
 async function login(){try{let x=await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:email.value,password:password.value})}).then(r=>r.json());if(!x.token)throw Error(x.error);token=x.token;me=x.user;localStorage.setItem('ml_token',token);localStorage.setItem('ml_me',JSON.stringify(me));boot()}catch(e){alert(e.message)}}
 async function register(){
   try{
-    let x=await api('/api/register',{
+    let x=await api('/api/auth/register',{
       method:'POST',
       body:JSON.stringify({
         name:document.getElementById('name').value,
