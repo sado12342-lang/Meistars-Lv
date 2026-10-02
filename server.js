@@ -28,11 +28,147 @@ app.get("/api/health",(req,res)=>res.json({ok:true,service:"Meistars.lv"}));
 app.post("/api/auth/register",async(req,res)=>{try{const {name,email,password,phone,role="client"}=req.body;if(!name||!email||!password)return res.status(400).json({error:"Aizpildi vārdu, e-pastu un paroli"});if(!["client","worker"].includes(role))return res.status(400).json({error:"Nepareiza loma"});const hash=await bcrypt.hash(password,12);const rows=await db("INSERT INTO users(name,email,phone,role,password_hash) VALUES($1,$2,$3,$4,$5) RETURNING id,name,email,phone,role",[name,email.toLowerCase(),phone||"",role,hash]);res.json({user:rows[0],token:token(rows[0])})}catch(e){res.status(400).json({error:e.code==="23505"?"Šāds e-pasts jau ir reģistrēts":"Reģistrācija neizdevās"})}});
 app.post("/api/auth/login",async(req,res)=>{const {email,password}=req.body;const u=(await db("SELECT * FROM users WHERE email=$1",[String(email||"").toLowerCase()]))[0];if(!u||!(await bcrypt.compare(password||"",u.password_hash)))return res.status(401).json({error:"Nepareizs e-pasts vai parole"});res.json({user:{id:u.id,name:u.name,email:u.email,phone:u.phone,role:u.role},token:token(u)})});
 app.get("/api/me",auth,async(req,res)=>res.json((await db("SELECT id,name,email,phone,role FROM users WHERE id=$1",[req.user.id]))[0]));
-app.get("/api/orders",auth,async(req,res)=>res.json(await db(`SELECT o.*,u.name client_name,(SELECT count(*) FROM offers f WHERE f.order_id=o.id) offer_count FROM orders o JOIN users u ON u.id=o.client_id ORDER BY o.created_at DESC`)));
-app.post("/api/orders",auth,async(req,res)=>{const {category,description,area,budget,place,work_date}=req.body;if(!category||!place)return res.status(400).json({error:"Norādi pakalpojumu un vietu"});res.json((await db(`INSERT INTO orders(client_id,category,description,area,budget,place,work_date) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING *`,[req.user.id,category,description||"",area||null,budget||null,place,work_date||null]))[0])});
-app.get("/api/orders/:id/offers",auth,async(req,res)=>res.json(await db(`SELECT f.*,u.name worker_name,u.phone worker_phone FROM offers f JOIN users u ON u.id=f.worker_id WHERE f.order_id=$1 ORDER BY f.price ASC`,[req.params.id])));
-app.post("/api/orders/:id/offers",auth,async(req,res)=>{const {price,note}=req.body;if(!price)return res.status(400).json({error:"Norādi cenu"});const o=(await db("SELECT * FROM orders WHERE id=$1",[req.params.id]))[0];if(!o)return res.status(404).json({error:"Pasūtījums nav atrasts"});res.json((await db(`INSERT INTO offers(order_id,worker_id,price,note) VALUES($1,$2,$3,$4) RETURNING *`,[o.id,req.user.id,price,note||""]))[0])});
-app.post("/api/orders/:id/select/:offerId",auth,async(req,res)=>{const o=(await db("SELECT * FROM orders WHERE id=$1 AND client_id=$2",[req.params.id,req.user.id]))[0];if(!o)return res.status(403).json({error:"Nav piekļuves"});await db("UPDATE orders SET status='worker_selected' WHERE id=$1",[o.id]);res.json({ok:true})});
+app.get("/api/orders",auth,async(req,res)=>{
+  if(req.user.role==="client"){
+    return res.json(await db(`
+      SELECT o.*,u.name client_name,
+      (SELECT count(*) FROM offers f WHERE f.order_id=o.id) offer_count
+      FROM orders o
+      JOIN users u ON u.id=o.client_id
+      WHERE o.client_id=$1
+      ORDER BY o.created_at DESC
+    `,[req.user.id]));
+  }
+
+  if(req.user.role==="worker"){
+    return res.json(await db(`
+      SELECT o.*,u.name client_name,
+      (SELECT count(*) FROM offers f WHERE f.order_id=o.id) offer_count
+      FROM orders o
+      JOIN users u ON u.id=o.client_id
+      WHERE o.status='active'
+      ORDER BY o.created_at DESC
+    `));
+  }
+
+  res.json([]);
+});
+
+app.post("/api/orders",auth,async(req,res)=>{
+  if(req.user.role!=="client"){
+    return res.status(403).json({error:"Tikai klients var izveidot pasūtījumu"});
+  }
+
+  const {category,description,area,budget,place,work_date}=req.body;
+
+  if(!category||!place){
+    return res.status(400).json({error:"Norādi pakalpojumu un vietu"});
+  }
+
+  res.json((await db(`
+    INSERT INTO orders(client_id,category,description,area,budget,place,work_date)
+    VALUES($1,$2,$3,$4,$5,$6,$7)
+    RETURNING *
+  `,[req.user.id,category,description||"",area||null,budget||null,place,work_date||null]))[0]);
+});
+
+app.get("/api/orders/:id/offers",auth,async(req,res)=>{
+  const o=(await db("SELECT * FROM orders WHERE id=$1",[req.params.id]))[0];
+
+  if(!o){
+    return res.status(404).json({error:"Pasūtījums nav atrasts"});
+  }
+
+  if(req.user.role==="client" && o.client_id!==req.user.id){
+    return res.status(403).json({error:"Nav piekļuves"});
+  }
+
+  if(req.user.role==="worker"){
+    return res.json(await db(`
+      SELECT f.*,u.name worker_name,u.phone worker_phone
+      FROM offers f
+      JOIN users u ON u.id=f.worker_id
+      WHERE f.order_id=$1 AND f.worker_id=$2
+      ORDER BY f.price ASC
+    `,[req.params.id,req.user.id]));
+  }
+
+  res.json(await db(`
+    SELECT f.*,u.name worker_name,u.phone worker_phone
+    FROM offers f
+    JOIN users u ON u.id=f.worker_id
+    WHERE f.order_id=$1
+    ORDER BY f.price ASC
+  `,[req.params.id]));
+});
+
+app.post("/api/orders/:id/offers",auth,async(req,res)=>{
+  if(req.user.role!=="worker"){
+    return res.status(403).json({error:"Tikai meistars var iesniegt piedāvājumu"});
+  }
+
+  const {price,note}=req.body;
+
+  if(!price){
+    return res.status(400).json({error:"Norādi cenu"});
+  }
+
+  const o=(await db("SELECT * FROM orders WHERE id=$1",[req.params.id]))[0];
+
+  if(!o){
+    return res.status(404).json({error:"Pasūtījums nav atrasts"});
+  }
+
+  if(o.client_id===req.user.id){
+    return res.status(403).json({error:"Nevar piedāvāt cenu savam pasūtījumam"});
+  }
+
+  if(o.status!=="active"){
+    return res.status(400).json({error:"Šis pasūtījums vairs nav aktīvs"});
+  }
+
+  const existing=await db(
+    "SELECT id FROM offers WHERE order_id=$1 AND worker_id=$2",
+    [o.id,req.user.id]
+  );
+
+  if(existing.length){
+    return res.status(400).json({error:"Tu jau esi iesniedzis piedāvājumu"});
+  }
+
+  res.json((await db(`
+    INSERT INTO offers(order_id,worker_id,price,note)
+    VALUES($1,$2,$3,$4)
+    RETURNING *
+  `,[o.id,req.user.id,price,note||""]))[0]);
+});
+
+app.post("/api/orders/:id/select/:offerId",auth,async(req,res)=>{
+  const o=(await db(
+    "SELECT * FROM orders WHERE id=$1 AND client_id=$2",
+    [req.params.id,req.user.id]
+  ))[0];
+
+  if(!o){
+    return res.status(403).json({error:"Nav piekļuves"});
+  }
+
+  const offer=(await db(
+    "SELECT * FROM offers WHERE id=$1 AND order_id=$2",
+    [req.params.offerId,req.params.id]
+  ))[0];
+
+  if(!offer){
+    return res.status(404).json({error:"Piedāvājums nav atrasts"});
+  }
+
+  await db(
+    "UPDATE orders SET status='worker_selected' WHERE id=$1",
+    [o.id]
+  );
+
+  res.json({ok:true});
+});
 app.get("/api/orders/:id/messages",auth,async(req,res)=>res.json(await db(`SELECT m.*,u.name sender_name FROM messages m JOIN users u ON u.id=m.sender_id WHERE m.order_id=$1 ORDER BY m.created_at`,[req.params.id])));
 app.post("/api/orders/:id/messages",auth,async(req,res)=>{if(!req.body.body)return res.status(400).json({error:"Ziņa ir tukša"});res.json((await db("INSERT INTO messages(order_id,sender_id,body) VALUES($1,$2,$3) RETURNING *",[req.params.id,req.user.id,req.body.body]))[0])});
 app.get("/api/admin/users",auth,admin,async(req,res)=>res.json(await db("SELECT id,name,email,phone,role,created_at FROM users ORDER BY id DESC")));
