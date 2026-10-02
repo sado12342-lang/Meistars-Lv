@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: meistars-lv
+    runtime: node
+    buildCommand: npm ci
+    startCommand: npm start
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: ADMIN_EMAIL
+        value: sado12342@inbox.lv
+      - key: ADMIN_PASSWORD
+        sync: false
