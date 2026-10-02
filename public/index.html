@@ -1,51 +1,712 @@
-<!doctype html><html lang="lv"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#e53935"><title>Meistars.lv</title><style>
-*{box-sizing:border-box}body{margin:0;background:#eef0f3;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#17181d}.app{max-width:460px;min-height:100vh;margin:auto;background:#fff}.top{padding:15px 17px;border-bottom:1px solid #eee;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;background:#fff;z-index:3}.logo{font-size:24px;font-weight:900}.logo span{color:#e53935}.page{display:none;padding:18px 17px 80px}.on{display:block}h1{font-size:28px}h2{font-size:20px}.card{border:1px solid #e1e3e7;border-radius:17px;padding:15px;margin:10px 0}.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.cat{border:1px solid #e1e3e7;border-radius:15px;padding:15px;cursor:pointer}.btn{border:0;border-radius:12px;padding:13px 15px;font-weight:750}.red{background:#e53935;color:#fff}.gray{background:#f0f1f3}.full{width:100%}.muted{color:#747880}input,textarea,select{width:100%;padding:13px;border:1px solid #d9dce1;border-radius:12px;margin:5px 0 12px;font-size:16px}textarea{min-height:90px}label{font-size:13px;font-weight:700}.bottom{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:min(460px,100%);background:#fff;border-top:1px solid #eee;display:flex}.bottom button{flex:1;border:0;background:none;padding:10px;font-size:11px;color:#777}.bottom .on{color:#e53935;font-weight:800}.hide{display:none}.danger{color:#b71c1c}.admin{background:#111;color:#fff}
-</style></head><body><div class="app">
-<header class="top"><div class="logo">Meistars<span>.lv</span></div><button class="btn gray" onclick="logout()">Iziet</button></header>
-<section id="auth" class="page on"><h1>Meistars.lv</h1><p class="muted">Klientu un meistaru platforma.</p><div class="card"><div class="grid"><button class="btn red" onclick="mode('login')">Ieiet</button><button class="btn gray" onclick="mode('register')">Reģistrēties</button></div><div id="authForm"></div></div></section>
-<section id="home" class="page"><h1>Atrodi meistaru</h1><p class="muted">Izveido pasūtījumu un saņem piedāvājumus.</p><button class="btn red full" onclick="newOrder()">＋ Jauns pasūtījums</button><h2>Pakalpojumi</h2><div class="grid"><div class="cat" onclick="newOrder('Krāsošana')">🎨<br>Krāsošana</div><div class="cat" onclick="newOrder('Špaktelēšana')">🧱<br>Špaktelēšana</div><div class="cat" onclick="newOrder('Elektriķis')">⚡<br>Elektriķis</div><div class="cat" onclick="newOrder('Santehniķis')">🚿<br>Santehniķis</div></div><h2>Pasūtījumi</h2><div id="orders"></div></section>
-<section id="new" class="page"><button class="btn gray" onclick="show('home')">‹ Atpakaļ</button><h1>Jauns pasūtījums</h1><label>Pakalpojums</label><input id="cat"><label>Apraksts</label><textarea id="desc"></textarea><div class="grid"><div><label>m²</label><input id="area"></div><div><label>Budžets €</label><input id="budget"></div></div><label>Vieta</label><input id="place"><label>Datums</label><input id="date" type="date"><button class="btn red full" onclick="create()">Publicēt</button></section>
-<section id="admin" class="page admin"><h1>Admin panelis</h1><div id="stats"></div><h2>Lietotāji</h2><div id="users"></div><h2>Pasūtījumi</h2><div id="adminOrders"></div></section>
-<nav id="nav" class="bottom hide"><button class="on" onclick="show('home')">🏠<br>Sākums</button><button onclick="show('home')">📋<br>Pasūtījumi</button><button onclick="show('profile')">👤<br>Profils</button><button id="adminBtn" class="hide" onclick="showAdmin()">⚙️<br>Admin</button></nav>
-<section id="profile" class="page"><h1>Profils</h1><div class="card"><b id="me"></b><p id="role" class="muted"></p></div><button class="btn gray full" onclick="logout()">Iziet no konta</button></section>
-</div>
-<script>
-let token=localStorage.getItem('ml_token'),me=JSON.parse(localStorage.getItem('ml_me')||'null');
-function show(id){document.querySelectorAll('.page').forEach(x=>x.classList.remove('on'));document.getElementById(id).classList.add('on');}
-function api(path,opt={}){opt.headers={...(opt.headers||{}),Authorization:'Bearer '+token,'Content-Type':'application/json'};return fetch(path,opt).then(async r=>{let x=await r.json();if(!r.ok)throw Error(x.error||'Kļūda');return x})}
-function mode(m){document.getElementById('authForm').innerHTML=m==='login'?`<label>E-pasts</label><input id="email" type="email"><label>Parole</label><input id="password" type="password"><button class="btn red full" onclick="login()">Ieiet</button>`:`<label>Vārds</label><input id="name"><label>E-pasts</label><input id="email" type="email"><label>Tālrunis</label><input id="phone"><label>Parole</label><input id="password" type="password"><label>Loma</label><select id="role"><option value="client">Klients</option><option value="worker">Meistars</option></select><button class="btn red full" onclick="register()">Izveidot kontu</button>`}
-async function login(){try{let x=await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:email.value,password:password.value})}).then(r=>r.json());if(!x.token)throw Error(x.error);token=x.token;me=x.user;localStorage.setItem('ml_token',token);localStorage.setItem('ml_me',JSON.stringify(me));boot()}catch(e){alert(e.message)}}
-async function register(){
-  try{
-    let x=await api('/api/auth/register',{
-      method:'POST',
-      body:JSON.stringify({
-        name:document.getElementById('name').value,
-        email:document.getElementById('email').value,
-        phone:document.getElementById('phone').value,
-        password:document.getElementById('password').value,
-        role:document.getElementById('role').value
-      })
-    });
+const express=require("express");
+const path=require("path");
+const bcrypt=require("bcryptjs");
+const jwt=require("jsonwebtoken");
+const {Pool}=require("pg");
+const helmet=require("helmet");
+const cors=require("cors");
+const rateLimit=require("express-rate-limit");
+require("dotenv").config();
 
-    if(x.token){
-      token=x.token;
-      me=x.user;
-      localStorage.setItem('ml_token',token);
-      localStorage.setItem('ml_me',JSON.stringify(me));
-      alert('Konts izveidots!');
-      boot();
+const app=express();
+
+const pool=new Pool({
+  connectionString:process.env.DATABASE_URL,
+  ssl:process.env.DATABASE_URL?.includes("sslmode=require")
+    ? {rejectUnauthorized:false}
+    : undefined
+});
+
+app.use(helmet({contentSecurityPolicy:false}));
+app.use(cors({origin:true,credentials:true}));
+app.use(express.json({limit:"1mb"}));
+app.use(rateLimit({windowMs:15*60*1000,max:300}));
+app.use(express.static(path.join(__dirname,"public")));
+
+async function db(q,p=[]){
+  return (await pool.query(q,p)).rows;
+}
+
+async function init(){
+
+  await db(`
+    CREATE TABLE IF NOT EXISTS users(
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      email TEXT UNIQUE NOT NULL,
+      phone TEXT,
+      role TEXT NOT NULL DEFAULT 'client',
+      password_hash TEXT NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT now()
+    )
+  `);
+
+  await db(`
+    CREATE TABLE IF NOT EXISTS orders(
+      id SERIAL PRIMARY KEY,
+      client_id INT REFERENCES users(id),
+      category TEXT NOT NULL,
+      description TEXT,
+      area NUMERIC,
+      budget NUMERIC,
+      place TEXT,
+      work_date DATE,
+      status TEXT DEFAULT 'active',
+      selected_worker_id INT REFERENCES users(id),
+      created_at TIMESTAMPTZ DEFAULT now()
+    )
+  `);
+
+  await db(`
+    ALTER TABLE orders
+    ADD COLUMN IF NOT EXISTS selected_worker_id INT REFERENCES users(id)
+  `);
+
+  await db(`
+    CREATE TABLE IF NOT EXISTS offers(
+      id SERIAL PRIMARY KEY,
+      order_id INT REFERENCES orders(id) ON DELETE CASCADE,
+      worker_id INT REFERENCES users(id),
+      price NUMERIC NOT NULL,
+      note TEXT,
+      rating NUMERIC DEFAULT 5,
+      created_at TIMESTAMPTZ DEFAULT now()
+    )
+  `);
+
+  await db(`
+    CREATE TABLE IF NOT EXISTS messages(
+      id SERIAL PRIMARY KEY,
+      order_id INT REFERENCES orders(id) ON DELETE CASCADE,
+      sender_id INT REFERENCES users(id),
+      body TEXT NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT now()
+    )
+  `);
+
+  const e=process.env.ADMIN_EMAIL;
+  const p=process.env.ADMIN_PASSWORD;
+
+  if(e&&p){
+    const exists=await db(
+      "SELECT id FROM users WHERE email=$1",
+      [e]
+    );
+
+    if(!exists.length){
+      await db(
+        "INSERT INTO users(name,email,role,password_hash) VALUES($1,$2,'admin',$3)",
+        ["Ahims1997",e,await bcrypt.hash(p,12)]
+      );
     }else{
-      alert(x.error||x.message||'Reģistrācija neizdevās');
+      await db(
+        "UPDATE users SET name=$1 WHERE email=$2",
+        ["Ahims1997",e]
+      );
     }
-  }catch(e){
-    alert('Kļūda: '+e.message);
   }
 }
-function boot(){document.getElementById('nav').classList.remove('hide');if(me.role==='admin')document.getElementById('adminBtn').classList.remove('hide');show('home');loadOrders();document.getElementById('me').textContent=me.name;document.getElementById('role').textContent=me.role}
-async function loadOrders(){try{let a=await api('/api/orders');document.getElementById('orders').innerHTML=a.map(o=>`<div class="card"><b>${o.category}</b><p>${o.description||''}</p><span>${o.place}</span> · <b>${o.offer_count} piedāv.</b></div>`).join('')||'<p class="muted">Nav pasūtījumu.</p>'}catch(e){}}
-function newOrder(c=''){document.getElementById('cat').value=c;show('new')}
-async function create(){try{await api('/api/orders',{method:'POST',body:JSON.stringify({category:cat.value,description:desc.value,area:area.value,budget:budget.value,place:place.value,work_date:date.value})});alert('Pasūtījums publicēts');show('home');loadOrders()}catch(e){alert(e.message)}}
-async function showAdmin(){try{show('admin');let s=await api('/api/admin/stats'),u=await api('/api/admin/users'),o=await api('/api/admin/orders');stats.innerHTML=`<div class="card">Lietotāji: <b>${s.users}</b> · Pasūtījumi: <b>${s.orders}</b> · Piedāvājumi: <b>${s.offers}</b></div>`;users.innerHTML=u.map(x=>`<div class="card">${x.name}<br><small>${x.email} · ${x.role}</small></div>`).join('');adminOrders.innerHTML=o.map(x=>`<div class="card"><b>${x.category}</b><br>${x.client_name} · ${x.client_email}<br>${x.place}</div>`).join('')}catch(e){alert(e.message)}}
-function logout(){localStorage.clear();location.reload()}mode('login');if(token&&me)boot();
-</script></body></html>
+
+function token(u){
+  return jwt.sign(
+    {
+      id:u.id,
+      role:u.role,
+      email:u.email
+    },
+    process.env.JWT_SECRET,
+    {expiresIn:"7d"}
+  );
+}
+
+function auth(req,res,next){
+  try{
+    const h=req.headers.authorization||"";
+    req.user=jwt.verify(
+      h.replace("Bearer ",""),
+      process.env.JWT_SECRET
+    );
+    next();
+  }catch(e){
+    res.status(401).json({
+      error:"Nepieciešama autorizācija"
+    });
+  }
+}
+
+function admin(req,res,next){
+  if(req.user?.role!=="admin"){
+    return res.status(403).json({
+      error:"Tikai administratoram"
+    });
+  }
+  next();
+}
+
+
+/* HEALTH */
+
+app.get("/api/health",(req,res)=>{
+  res.json({
+    ok:true,
+    service:"Meistars.lv"
+  });
+});
+
+
+/* REGISTER */
+
+app.post("/api/auth/register",async(req,res)=>{
+  try{
+
+    const {
+      name,
+      email,
+      password,
+      phone,
+      role="client"
+    }=req.body;
+
+    if(!name||!email||!password){
+      return res.status(400).json({
+        error:"Aizpildi vārdu, e-pastu un paroli"
+      });
+    }
+
+    if(!["client","worker"].includes(role)){
+      return res.status(400).json({
+        error:"Nepareiza loma"
+      });
+    }
+
+    const hash=await bcrypt.hash(password,12);
+
+    const rows=await db(`
+      INSERT INTO users(
+        name,
+        email,
+        phone,
+        role,
+        password_hash
+      )
+      VALUES($1,$2,$3,$4,$5)
+      RETURNING id,name,email,phone,role
+    `,[
+      name,
+      email.toLowerCase(),
+      phone||"",
+      role,
+      hash
+    ]);
+
+    res.json({
+      user:rows[0],
+      token:token(rows[0])
+    });
+
+  }catch(e){
+
+    res.status(400).json({
+      error:e.code==="23505"
+        ?"Šāds e-pasts jau ir reģistrēts"
+        :"Reģistrācija neizdevās"
+    });
+
+  }
+});
+
+
+/* LOGIN */
+
+app.post("/api/auth/login",async(req,res)=>{
+
+  const {
+    email,
+    password
+  }=req.body;
+
+  const u=(await db(
+    "SELECT * FROM users WHERE email=$1",
+    [String(email||"").toLowerCase()]
+  ))[0];
+
+  if(
+    !u ||
+    !(await bcrypt.compare(
+      password||"",
+      u.password_hash
+    ))
+  ){
+    return res.status(401).json({
+      error:"Nepareizs e-pasts vai parole"
+    });
+  }
+
+  res.json({
+    user:{
+      id:u.id,
+      name:u.name,
+      email:u.email,
+      phone:u.phone,
+      role:u.role
+    },
+    token:token(u)
+  });
+
+});
+
+
+/* CURRENT USER */
+
+app.get("/api/me",auth,async(req,res)=>{
+
+  res.json(
+    (await db(
+      "SELECT id,name,email,phone,role FROM users WHERE id=$1",
+      [req.user.id]
+    ))[0]
+  );
+
+});
+
+
+/* ORDERS */
+
+/* Klients redz savus.
+   Meistars redz aktīvos pasūtījumus. */
+
+app.get("/api/orders",auth,async(req,res)=>{
+
+  if(req.user.role==="client"){
+
+    return res.json(await db(`
+      SELECT
+        o.*,
+        u.name AS client_name,
+        (
+          SELECT count(*)
+          FROM offers f
+          WHERE f.order_id=o.id
+        ) AS offer_count
+      FROM orders o
+      JOIN users u ON u.id=o.client_id
+      WHERE o.client_id=$1
+      ORDER BY o.created_at DESC
+    `,[req.user.id]));
+
+  }
+
+  if(req.user.role==="worker"){
+
+    return res.json(await db(`
+      SELECT
+        o.*,
+        u.name AS client_name,
+        (
+          SELECT count(*)
+          FROM offers f
+          WHERE f.order_id=o.id
+        ) AS offer_count
+      FROM orders o
+      JOIN users u ON u.id=o.client_id
+      WHERE o.status='active'
+      ORDER BY o.created_at DESC
+    `));
+
+  }
+
+  res.json([]);
+
+});
+
+
+/* CREATE ORDER */
+/* Tikai klients */
+
+app.post("/api/orders",auth,async(req,res)=>{
+
+  if(req.user.role!=="client"){
+    return res.status(403).json({
+      error:"Tikai klients var izveidot pasūtījumu"
+    });
+  }
+
+  const {
+    category,
+    description,
+    area,
+    budget,
+    place,
+    work_date
+  }=req.body;
+
+  if(!category||!place){
+    return res.status(400).json({
+      error:"Norādi pakalpojumu un vietu"
+    });
+  }
+
+  const rows=await db(`
+    INSERT INTO orders(
+      client_id,
+      category,
+      description,
+      area,
+      budget,
+      place,
+      work_date
+    )
+    VALUES($1,$2,$3,$4,$5,$6,$7)
+    RETURNING *
+  `,[
+    req.user.id,
+    category,
+    description||"",
+    area||null,
+    budget||null,
+    place,
+    work_date||null
+  ]);
+
+  res.json(rows[0]);
+
+});
+
+
+/* OFFERS */
+/* Klients redz visus piedāvājumus.
+   Meistars redz tikai savu piedāvājumu. */
+
+app.get("/api/orders/:id/offers",auth,async(req,res)=>{
+
+  const order=(await db(
+    "SELECT * FROM orders WHERE id=$1",
+    [req.params.id]
+  ))[0];
+
+  if(!order){
+    return res.status(404).json({
+      error:"Pasūtījums nav atrasts"
+    });
+  }
+
+  if(
+    req.user.role==="client" &&
+    order.client_id!==req.user.id
+  ){
+    return res.status(403).json({
+      error:"Nav piekļuves"
+    });
+  }
+
+  if(req.user.role==="worker"){
+
+    return res.json(await db(`
+      SELECT
+        f.*,
+        u.name AS worker_name,
+        u.phone AS worker_phone
+      FROM offers f
+      JOIN users u ON u.id=f.worker_id
+      WHERE f.order_id=$1
+      AND f.worker_id=$2
+      ORDER BY f.price ASC
+    `,[
+      req.params.id,
+      req.user.id
+    ]));
+
+  }
+
+  res.json(await db(`
+    SELECT
+      f.*,
+      u.name AS worker_name,
+      u.phone AS worker_phone
+    FROM offers f
+    JOIN users u ON u.id=f.worker_id
+    WHERE f.order_id=$1
+    ORDER BY f.price ASC
+  `,[req.params.id]));
+
+});
+
+
+/* CREATE OFFER */
+/* Tikai meistars */
+
+app.post("/api/orders/:id/offers",auth,async(req,res)=>{
+
+  if(req.user.role!=="worker"){
+    return res.status(403).json({
+      error:"Tikai meistars var iesniegt piedāvājumu"
+    });
+  }
+
+  const {
+    price,
+    note
+  }=req.body;
+
+  if(!price){
+    return res.status(400).json({
+      error:"Norādi cenu"
+    });
+  }
+
+  const order=(await db(
+    "SELECT * FROM orders WHERE id=$1",
+    [req.params.id]
+  ))[0];
+
+  if(!order){
+    return res.status(404).json({
+      error:"Pasūtījums nav atrasts"
+    });
+  }
+
+  if(order.status!=="active"){
+    return res.status(400).json({
+      error:"Šis pasūtījums vairs nav aktīvs"
+    });
+  }
+
+  if(order.client_id===req.user.id){
+    return res.status(403).json({
+      error:"Nevar piedāvāt cenu savam pasūtījumam"
+    });
+  }
+
+  const existing=await db(
+    "SELECT id FROM offers WHERE order_id=$1 AND worker_id=$2",
+    [
+      order.id,
+      req.user.id
+    ]
+  );
+
+  if(existing.length){
+    return res.status(400).json({
+      error:"Tu jau esi iesniedzis piedāvājumu"
+    });
+  }
+
+  const rows=await db(`
+    INSERT INTO offers(
+      order_id,
+      worker_id,
+      price,
+      note
+    )
+    VALUES($1,$2,$3,$4)
+    RETURNING *
+  `,[
+    order.id,
+    req.user.id,
+    price,
+    note||""
+  ]);
+
+  res.json(rows[0]);
+
+});
+
+
+/* SELECT WORKER */
+/* Tikai klients */
+
+app.post("/api/orders/:id/select/:offerId",auth,async(req,res)=>{
+
+  if(req.user.role!=="client"){
+    return res.status(403).json({
+      error:"Tikai klients var izvēlēties meistaru"
+    });
+  }
+
+  const order=(await db(`
+    SELECT *
+    FROM orders
+    WHERE id=$1
+    AND client_id=$2
+  `,[
+    req.params.id,
+    req.user.id
+  ]))[0];
+
+  if(!order){
+    return res.status(403).json({
+      error:"Nav piekļuves"
+    });
+  }
+
+  const offer=(await db(`
+    SELECT *
+    FROM offers
+    WHERE id=$1
+    AND order_id=$2
+  `,[
+    req.params.offerId,
+    req.params.id
+  ]))[0];
+
+  if(!offer){
+    return res.status(404).json({
+      error:"Piedāvājums nav atrasts"
+    });
+  }
+
+  await db(`
+    UPDATE orders
+    SET
+      status='worker_selected',
+      selected_worker_id=$1
+    WHERE id=$2
+  `,[
+    offer.worker_id,
+    order.id
+  ]);
+
+  res.json({
+    ok:true,
+    message:"Meistars izvēlēts"
+  });
+
+});
+
+
+/* MESSAGES */
+
+app.get("/api/orders/:id/messages",auth,async(req,res)=>{
+
+  res.json(await db(`
+    SELECT
+      m.*,
+      u.name AS sender_name
+    FROM messages m
+    JOIN users u ON u.id=m.sender_id
+    WHERE m.order_id=$1
+    ORDER BY m.created_at
+  `,[req.params.id]));
+
+});
+
+
+app.post("/api/orders/:id/messages",auth,async(req,res)=>{
+
+  if(!req.body.body){
+    return res.status(400).json({
+      error:"Ziņa ir tukša"
+    });
+  }
+
+  const rows=await db(`
+    INSERT INTO messages(
+      order_id,
+      sender_id,
+      body
+    )
+    VALUES($1,$2,$3)
+    RETURNING *
+  `,[
+    req.params.id,
+    req.user.id,
+    req.body.body
+  ]);
+
+  res.json(rows[0]);
+
+});
+
+
+/* ADMIN */
+
+app.get(
+  "/api/admin/users",
+  auth,
+  admin,
+  async(req,res)=>{
+    res.json(await db(`
+      SELECT
+        id,
+        name,
+        email,
+        phone,
+        role,
+        created_at
+      FROM users
+      ORDER BY id DESC
+    `));
+  }
+);
+
+
+app.get(
+  "/api/admin/orders",
+  auth,
+  admin,
+  async(req,res)=>{
+    res.json(await db(`
+      SELECT
+        o.*,
+        u.name AS client_name,
+        u.email AS client_email
+      FROM orders o
+      JOIN users u ON u.id=o.client_id
+      ORDER BY o.id DESC
+    `));
+  }
+);
+
+
+app.get(
+  "/api/admin/stats",
+  auth,
+  admin,
+  async(req,res)=>{
+
+    res.json({
+      users:(await db(
+        "SELECT count(*) n FROM users"
+      ))[0].n,
+
+      orders:(await db(
+        "SELECT count(*) n FROM orders"
+      ))[0].n,
+
+      offers:(await db(
+        "SELECT count(*) n FROM offers"
+      ))[0].n
+    });
+
+  }
+);
+
+
+/* FRONTEND */
+
+app.get("*",(req,res)=>{
+  res.sendFile(
+    path.join(
+      __dirname,
+      "public",
+      "index.html"
+    )
+  );
+});
+
+
+/* START */
+
+init()
+  .then(()=>{
+    app.listen(
+      process.env.PORT||3000,
+      ()=>{
+        console.log("Meistars.lv running")
+      }
+    );
+  })
+  .catch(e=>{
+    console.error(e);
+    process.exit(1);
+  });
