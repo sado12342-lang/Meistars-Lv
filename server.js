@@ -18,7 +18,7 @@ async function init(){
  await db(`CREATE TABLE IF NOT EXISTS offers(id SERIAL PRIMARY KEY,order_id INT REFERENCES orders(id) ON DELETE CASCADE,worker_id INT REFERENCES users(id),price NUMERIC NOT NULL,note TEXT,rating NUMERIC DEFAULT 5,created_at TIMESTAMPTZ DEFAULT now())`);
  await db(`CREATE TABLE IF NOT EXISTS messages(id SERIAL PRIMARY KEY,order_id INT REFERENCES orders(id) ON DELETE CASCADE,sender_id INT REFERENCES users(id),body TEXT NOT NULL,created_at TIMESTAMPTZ DEFAULT now())`);
  const e=process.env.ADMIN_EMAIL,p=process.env.ADMIN_PASSWORD;
- if(!exists.length)await db("INSERT INTO users(name,email,role,password_hash) VALUES($1,$2,'admin',$3)",["Ahims1997",e,await bcrypt.hash(p,12)]);else await db("UPDATE users SET name=$1 WHERE email=$2",["Ahims1997",e]);
+ if(e&&p){const exists=await db("SELECT id FROM users WHERE email=$1",[e]);if(!exists.length)await db("INSERT INTO users(name,email,role,password_hash) VALUES($1,$2,'admin',$3)",["Ahims1997",e,await bcrypt.hash(p,12)]);else await db("UPDATE users SET name=$1 WHERE email=$2",["Ahims1997",e])}
 }
 function token(u){return jwt.sign({id:u.id,role:u.role,email:u.email},process.env.JWT_SECRET,{expiresIn:"7d"})}
 function auth(req,res,next){try{const h=req.headers.authorization||"";req.user=jwt.verify(h.replace("Bearer ",""),process.env.JWT_SECRET);next()}catch(e){res.status(401).json({error:"Nepieciešama autorizācija"})}}
